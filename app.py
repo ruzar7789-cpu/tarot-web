@@ -77,16 +77,16 @@ def send_async_email(subject, body):
         msg['From'] = ADMIN_EMAIL
         msg['To'] = ADMIN_EMAIL
         msg['Subject'] = subject
-        msg.attach(MIMEText(body, 'plain'))
+        msg.attach(MIMEText(body, 'plain', 'utf-8'))
 
-        server = smtplib.SMTP('smtp.gmail.com', 587, timeout=10)
-        server.starttls()
-        server.login(ADMIN_EMAIL, SENDER_PASSWORD)
-        server.send_message(msg)
-        server.quit()
-        print("E-mail úspěšně odeslán.")
+        # Použití SSL spojení na portu 465 (spolehlivější pro Render)
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=15) as server:
+            server.login(ADMIN_EMAIL, SENDER_PASSWORD)
+            server.send_message(msg)
+            
+        print("✅ E-mail byl úspěšně odeslán na Gmail.")
     except Exception as e:
-        print(f"Chyba při odesílání emailu na pozadí: {e}")
+        print(f"❌ Chyba při odesílání e-mailu: {e}")
 
 @app.route('/')
 def home():
@@ -161,7 +161,7 @@ Vybraná služba: {service_title}
 Poznámka / Dotaz: {note}
     """
 
-    # Odeslání e-mailu na pozadí (neblokuje web)
+    # Odeslání na pozadí
     threading.Thread(target=send_async_email, args=(subject, body)).start()
 
     return jsonify({
