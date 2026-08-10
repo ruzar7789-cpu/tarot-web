@@ -4,6 +4,7 @@ import io
 import base64
 import random
 import smtplib
+import threading
 import os
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -71,37 +72,42 @@ TAROT_CARDS = [
     {"name": "XXI. Svět", "meaning": "Dokončení cyklu, integrace, dosažení cíle a harmonie."}
 ]
 
-def send_combined_reservation_email(reference_number, client_email, service_title, note):
-    recipients = [ADMIN_EMAIL]
-    if client_email and "@" in client_email and client_email != ADMIN_EMAIL:
-        recipients.append(client_email)
+def send_single_mail(to_email, subject, body_text):
+    """Pomocná funkce pro bezpečné odeslání jednoho e-mailu přes SSL"""
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = ADMIN_EMAIL
+        msg['To'] = to_email
+        msg['Subject'] = subject
+        msg.attach(MIMEText(body_text, 'plain', 'utf-8'))
 
-    msg = MIMEMultipart()
-    msg['From'] = ADMIN_EMAIL
-    msg['To'] = client_email if client_email else ADMIN_EMAIL
-    msg['Subject'] = f"Potvrzení rezervace č. {reference_number} - Mystická Svatyně"
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=10) as server:
+            server.login(ADMIN_EMAIL, SENDER_PASSWORD)
+            server.sendmail(ADMIN_EMAIL, [to_email], msg.as_string())
+        print(f"E-mail úspěšně odeslán na {to_email}")
+    except Exception as e:
+        print(f"Chyba při odesílání na {to_email}: {e}")
 
-    body = f"""Dobrý den,
+def process_emails_in_background(reference_number, client_email, service_title, note):
+    # 1. Zpráva správci
+    admin_body = f"Nová rezervace!\n\nČíslo: {reference_number}\nE-mail klienta: {client_email}\nSlužba: {service_title}\nPoznámka: {note if note else 'Bez poznámky'}"
+    send_single_mail(ADMIN_EMAIL, f"Nová rezervace: {reference_number}", admin_body)
 
-děkujeme za vaši rezervaci v Mystické Svatyni!
+    # 2. Zpráva klientovi (pokud vyplnil platný e-mail)
+    if client_email and "@" in client_email:
+        client_body = f"""Dobrý den,
 
-Detaily rezervace:
-- Číslo rezervace: {reference_number}
-- Vybraná služba: {service_title}
-- Vaše poznámka: {note if note else "Bez poznámky"}
-- Kontaktní e-mail: {client_email}
+děkujeme za vaši rezervaci č. {reference_number} v Mystické Svatyni.
 
-Vaše rezervace byla v pořádku přijata. Do 24 hodin vás budeme kontaktovat s podrobnostmi a přesným termínem.
+Vybraná služba: {service_title}
+Vaše poznámka: {note if note else 'Bez poznámky'}
+
+Do 24 hodin vás budeme kontaktovat s podrobnostmi a přesným termínem.
 
 S úctou,
 Mystická Svatyně
 """
-    msg.attach(MIMEText(body, 'plain', 'utf-8'))
-
-    # Odeslání všem příjemcům najednou v jednom SMTP spojení
-    with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=15) as server:
-        server.login(ADMIN_EMAIL, SENDER_PASSWORD)
-        server.sendmail(ADMIN_EMAIL, recipients, msg.as_string())
+        send_single_mail(client_email, f"Potvrzení rezervace č. {reference_number} - Mystická Svatyně", client_body)
 
 @app.route('/')
 def home():
@@ -166,18 +172,18 @@ def reserve():
     service_title = SERVICES.get(service_key, {}).get('title', 'Neznámá služba')
     reference_number = f"RES-{random.randint(1000, 9999)}"
 
-    try:
-        send_combined_reservation_email(reference_number, email, service_title, note)
-        return jsonify({
-            "status": "success",
-            "message": f"Rezervace č. {reference_number} byla úspěšně odeslána! Potvrzení bylo odesláno na váš e-mail."
-        })
-    except Exception as e:
-        print(f"CHYBA: {e}")
-        return jsonify({
-            "status": "error",
-            "message": f"Chyba při odesílání e-mailu: {str(e)}"
-        }), 500
+    # Spuštění odesílání e-mailů na pozadí (neblokuje tlačítko na webu)
+    thread = threading.Thread(
+        target=process_emails_in_background,
+        args=(reference_number, email, service_title, note)
+    )
+    thread.daemon = True
+    thread.start()
+
+    return jsonify({
+        "status": "success",
+        "message": f"Rezervace č. {reference_number} byla úspěšně odeslána! Potvrzení bylo odesláno na váš e-mail."
+    })
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
