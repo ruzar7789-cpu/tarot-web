@@ -72,21 +72,57 @@ TAROT_CARDS = [
     {"name": "XXI. Svět", "meaning": "Dokončení cyklu, integrace, dosažení cíle a harmonie."}
 ]
 
-def send_async_email(subject, body):
+def send_async_emails(reference_number, client_email, service_title, note):
     try:
-        msg = MIMEMultipart()
-        msg['From'] = ADMIN_EMAIL
-        msg['To'] = ADMIN_EMAIL
-        msg['Subject'] = subject
-        msg.attach(MIMEText(body, 'plain', 'utf-8'))
-
         with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=15) as server:
             server.login(ADMIN_EMAIL, SENDER_PASSWORD)
-            server.send_message(msg)
+
+            # 1. E-mail pro správce (Admin)
+            admin_msg = MIMEMultipart()
+            admin_msg['From'] = ADMIN_EMAIL
+            admin_msg['To'] = ADMIN_EMAIL
+            admin_msg['Subject'] = f"Nová rezervace: {reference_number} - Mystická Svatyně"
             
-        print("✅ E-mail byl úspěšně odeslán na admin Gmail.")
+            admin_body = f"""
+Nová rezervace ze stránek Mystická Svatyně!
+
+Číslo rezervace: {reference_number}
+E-mail klienta: {client_email}
+Vybraná služba: {service_title}
+Poznámka / Dotaz: {note}
+            """
+            admin_msg.attach(MIMEText(admin_body, 'plain', 'utf-8'))
+            server.send_message(admin_msg)
+            print("✅ E-mail pro administrátora odeslán.")
+
+            # 2. Potvrzovací e-mail pro klienta (pokud zadal platný e-mail)
+            if client_email and "@" in client_email:
+                client_msg = MIMEMultipart()
+                client_msg['From'] = ADMIN_EMAIL
+                client_msg['To'] = client_email
+                client_msg['Subject'] = f"Potvrzení rezervace č. {reference_number} - Mystická Svatyně"
+
+                client_body = f"""
+Dobrý den,
+
+děkujeme za vaši rezervaci v Mystické Svatyni.
+
+Shrnutí vaší rezervace:
+- Číslo rezervace: {reference_number}
+- Služba: {service_title}
+- Vaše poznámka: {note if note else "Bez poznámky"}
+
+Vaše rezervace byla v pořádku přijata. Do 24 hodin vás budeme kontaktovat s podrobnostmi a přesným termínem.
+
+S úctou,
+Mystická Svatyně
+                """
+                client_msg.attach(MIMEText(client_body, 'plain', 'utf-8'))
+                server.send_message(client_msg)
+                print(f"✅ Potvrzovací e-mail odeslán klientovi na: {client_email}")
+
     except Exception as e:
-        print(f"❌ Chyba při odesílání e-mailu: {e}")
+        print(f"❌ Chyba při odesílání e-mailů: {e}")
 
 @app.route('/')
 def home():
@@ -144,35 +180,28 @@ def generate_qr():
 @app.route('/api/reserve', methods=['POST'])
 def reserve():
     data = request.json or {}
-    email = data.get('email', '')
+    email = data.get('email', '').strip()
     service_key = data.get('service', 'tarot_basic')
-    note = data.get('note', '')
+    note = data.get('note', '').strip()
     
     service_title = SERVICES.get(service_key, {}).get('title', 'Neznámá služba')
     reference_number = f"RES-{random.randint(1000, 9999)}"
 
-    subject = f"Nová rezervace: {reference_number} - Mystická Svatyně"
-    body = f"""
-Nová rezervace ze stránek Mystická Svatyně!
-
-Číslo rezervace: {reference_number}
-E-mail klienta: {email}
-Vybraná služba: {service_title}
-Poznámka / Dotaz: {note}
-    """
-
-    threading.Thread(target=send_async_email, args=(subject, body)).start()
+    # Spuštění odesílání obou e-mailů na pozadí
+    threading.Thread(
+        target=send_async_emails, 
+        args=(reference_number, email, service_title, note)
+    ).start()
 
     return jsonify({
         "status": "success",
-        "message": f"Rezervace č. {reference_number} byla úspěšně odeslána! Potvrzení bude zpracováno."
+        "message": f"Rezervace č. {reference_number} byla úspěšně odeslána! Potvrzení bylo odesláno na váš e-mail."
     })
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
     user_msg = request.json.get('message', '').lower()
 
-    # Vylepšený Astrální Průvodce (Bod 4)
     if any(word in user_msg for word in ["ahoj", "dobrý den", "zdravím", "dobry den"]):
         reply = "Mystický pozdrav vám! Jsem váš Astrální Průvodce. S čím vám dnes mohou hvězdy a karty pomoci?"
 
