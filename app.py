@@ -3,17 +3,19 @@ import qrcode
 import io
 import base64
 import random
-import smtplib
-import threading
 import os
+import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 app = Flask(__name__)
 
 REVOLUT_IBAN = "LT803250069633761109"
-ADMIN_EMAIL = "ruzar7789@gmail.com"
-SENDER_PASSWORD = os.getenv("SENDER_PASSWORD", "deegwpoekzyqotkk")
+
+# Načtení z environmentálních proměnných na Renderu
+SENDER_EMAIL = os.getenv("SENDER_EMAIL", "ruzar7789@gmail.com")
+SENDER_PASSWORD = os.getenv("SENDER_PASSWORD", "")  # 16místné heslo aplikace
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "ruzar7789@gmail.com")
 
 SERVICES = {
     "tarot_basic": {
@@ -72,42 +74,23 @@ TAROT_CARDS = [
     {"name": "XXI. Svět", "meaning": "Dokončení cyklu, integrace, dosažení cíle a harmonie."}
 ]
 
-def send_single_mail(to_email, subject, body_text):
-    """Pomocná funkce pro bezpečné odeslání jednoho e-mailu přes SSL"""
-    try:
-        msg = MIMEMultipart()
-        msg['From'] = ADMIN_EMAIL
-        msg['To'] = to_email
-        msg['Subject'] = subject
-        msg.attach(MIMEText(body_text, 'plain', 'utf-8'))
+def send_smtp_email(to_email, subject, html_content):
+    msg = MIMEMultipart("alternative")
+    msg['Subject'] = subject
+    msg['From'] = f"Mystická Svatyně <{SENDER_EMAIL}>"
+    msg['To'] = to_email
+    msg['Reply-To'] = ADMIN_EMAIL
 
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=10) as server:
-            server.login(ADMIN_EMAIL, SENDER_PASSWORD)
-            server.sendmail(ADMIN_EMAIL, [to_email], msg.as_string())
-        print(f"E-mail úspěšně odeslán na {to_email}")
-    except Exception as e:
-        print(f"Chyba při odesílání na {to_email}: {e}")
+    part = MIMEText(html_content, 'html', 'utf-8')
+    msg.attach(part)
 
-def process_emails_in_background(reference_number, client_email, service_title, note):
-    # 1. Zpráva správci
-    admin_body = f"Nová rezervace!\n\nČíslo: {reference_number}\nE-mail klienta: {client_email}\nSlužba: {service_title}\nPoznámka: {note if note else 'Bez poznámky'}"
-    send_single_mail(ADMIN_EMAIL, f"Nová rezervace: {reference_number}", admin_body)
-
-    # 2. Zpráva klientovi (pokud vyplnil platný e-mail)
-    if client_email and "@" in client_email:
-        client_body = f"""Dobrý den,
-
-děkujeme za vaši rezervaci č. {reference_number} v Mystické Svatyni.
-
-Vybraná služba: {service_title}
-Vaše poznámka: {note if note else 'Bez poznámky'}
-
-Do 24 hodin vás budeme kontaktovat s podrobnostmi a přesným termínem.
-
-S úctou,
-Mystická Svatyně
-"""
-        send_single_mail(client_email, f"Potvrzení rezervace č. {reference_number} - Mystická Svatyně", client_body)
+    # Připojení přes Gmail SMTP s STARTTLS
+    server = smtplib.SMTP('smtp.gmail.com', 587)
+    server.ehlo()
+    server.starttls()
+    server.login(SENDER_EMAIL, SENDER_PASSWORD)
+    server.sendmail(SENDER_EMAIL, [to_email], msg.as_string())
+    server.quit()
 
 @app.route('/')
 def home():
@@ -172,18 +155,34 @@ def reserve():
     service_title = SERVICES.get(service_key, {}).get('title', 'Neznámá služba')
     reference_number = f"RES-{random.randint(1000, 9999)}"
 
-    # Spuštění odesílání e-mailů na pozadí (neblokuje tlačítko na webu)
-    thread = threading.Thread(
-        target=process_emails_in_background,
-        args=(reference_number, email, service_title, note)
-    )
-    thread.daemon = True
-    thread.start()
+    html_content = f"""
+    <h2>Potvrzení rezervace č. {reference_number}</h2>
+    <p><strong>Služba:</strong> {service_title}</p>
+    <p><strong>E-mail klienta:</strong> {email}</p>
+    <p><strong>Poznámka:</strong> {note if note else 'Bez poznámky'}</p>
+    <hr>
+    <p>Děkujeme za vaši rezervaci. Do 24 hodin vás budeme kontaktovat.</p>
+    <p><em>Mystická Svatyně</em></p>
+    """
 
-    return jsonify({
-        "status": "success",
-        "message": f"Rezervace č. {reference_number} byla úspěšně odeslána! Potvrzení bylo odesláno na váš e-mail."
-    })
+    try:
+        # 1. Odeslat e-mail do vaší schránky (Admin)
+        send_smtp_email(ADMIN_EMAIL, f"Nová rezervace {reference_number} - {service_title}", html_content)
+        
+        # 2. Odeslat e-mail klientovi (pokud zadal e-mail a liší se od admina)
+        if email and "@" in email and email != ADMIN_EMAIL:
+            send_smtp_email(email, f"Potvrzení rezervace č. {reference_number} - Mystická Svatyně", html_content)
+
+        return jsonify({
+            "status": "success",
+            "message": f"Rezervace č. {reference_number} byla úspěšně odeslána!"
+        })
+    except Exception as e:
+        print(f"SMTP chyba: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "message": f"Chyba při odesílání e-mailu: {str(e)}"
+        }), 500
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
@@ -230,5 +229,6 @@ def chat():
     return jsonify({"reply": reply})
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080)
-    
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port)
+                                                       
