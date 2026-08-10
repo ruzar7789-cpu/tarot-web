@@ -5,6 +5,7 @@ import base64
 import random
 import smtplib
 import threading
+import os
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -12,7 +13,7 @@ app = Flask(__name__)
 
 REVOLUT_IBAN = "LT803250069633761109"
 ADMIN_EMAIL = "ruzar7789@gmail.com"
-SENDER_PASSWORD = "ipomueicxxgxbumn"
+SENDER_PASSWORD = os.getenv("SENDER_PASSWORD", "ipomueicxxgxbumn")
 
 SERVICES = {
     "tarot_basic": {
@@ -79,12 +80,11 @@ def send_async_email(subject, body):
         msg['Subject'] = subject
         msg.attach(MIMEText(body, 'plain', 'utf-8'))
 
-        # Použití SSL spojení na portu 465 (spolehlivější pro Render)
         with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=15) as server:
             server.login(ADMIN_EMAIL, SENDER_PASSWORD)
             server.send_message(msg)
             
-        print("✅ E-mail byl úspěšně odeslán na Gmail.")
+        print("✅ E-mail byl úspěšně odeslán na admin Gmail.")
     except Exception as e:
         print(f"❌ Chyba při odesílání e-mailu: {e}")
 
@@ -161,7 +161,6 @@ Vybraná služba: {service_title}
 Poznámka / Dotaz: {note}
     """
 
-    # Odeslání na pozadí
     threading.Thread(target=send_async_email, args=(subject, body)).start()
 
     return jsonify({
@@ -172,14 +171,46 @@ Poznámka / Dotaz: {note}
 @app.route('/api/chat', methods=['POST'])
 def chat():
     user_msg = request.json.get('message', '').lower()
-    if "rituál" in user_msg or "očista" in user_msg:
-        reply = "Vysoce účinné rituály probíhají v návaznosti na fáze Měsíce. Vyplňte rezervaci pod ceníkem."
-    elif "vztah" in user_msg or "láska" in user_msg:
-        reply = "Partnerské vazby zkoumáme přes karmický rozbor. Doporučuji Rituál harmonizace."
-    elif "cena" in user_msg or "platba" in user_msg:
-        reply = "Platby probíhají bezpečně přes SEPA QR kód přímo v EUR na náš účet."
+
+    # Vylepšený Astrální Průvodce (Bod 4)
+    if any(word in user_msg for word in ["ahoj", "dobrý den", "zdravím", "dobry den"]):
+        reply = "Mystický pozdrav vám! Jsem váš Astrální Průvodce. S čím vám dnes mohou hvězdy a karty pomoci?"
+
+    elif any(word in user_msg for word in ["cena", "platba", "platit", "eur", "kolik", "účat", "qr"]):
+        reply = "Platby probíhají bezpečně přes SEPA QR kód v EUR na náš účet. Ceny služeb se pohybují od 25 EUR do 250 EUR."
+
+    elif any(word in user_msg for word in ["rituál", "ritual", "ochrana", "očista", "ocista", "kletba", "blok"]):
+        reply = "Vysoce účinné rituály (ochrana, očista, harmonizace) probíhají v návaznosti na fáze Měsíce. Po rezervaci vás budeme kontaktovat s přesným postupem."
+
+    elif any(word in user_msg for word in ["vztah", "láska", "laska", "partner", "rozchod", "karma"]):
+        reply = "Partnerské vazby a karmické zátěže zkoumáme přes karty i specifičtější rituály. Doporučuji Rituál harmonizace nebo Kompletní výklad."
+
+    elif any(word in user_msg for word in ["termín", "termin", "kdy", "čas", "cas", "doba", "jak dlouho"]):
+        reply = "Přesný termín výkladu či rituálu s vámi dohodneme do 24 hodin od přijetí vaší rezervace a platby."
+
+    elif any(word in user_msg for word in ["kde", "osobně", "osobne", "online", "zoom", "forma"]):
+        reply = "Výklady probíhají buď písemně/zvukovou zprávou do vašich e-mailů, případně jako živá online či osobní VIP konzultace."
+
+    elif any(word in user_msg for word in ["karta", "výklad", "vyklad", "tarot", "horoskop"]):
+        reply = "Tarotové karty odkrývají skryté energie a pravděpodobný vývoj. Můžete si také vyzkoušet naši online Denní kartu přímo výše na stránce!"
+
+    elif any(word in user_msg for word in ["příprava", "priprava", "co mám udělat", "jak se připravit"]):
+        reply = "Před výkladem nebo rituálem je vhodné se zklidnit, zformulovat svůj vnitřní dotaz a zachovat otevřenou mysl."
+
+    elif any(word in user_msg for word in ["storno", "zrušit", "zrusit", "vrácení", "vraceni"]):
+        reply = "Termín lze bezplatně přeplánovat do 24 hodin před domluveným časem. V případě dotazů využijte poznámku v rezervaci."
+
+    elif any(word in user_msg for word in ["kontakt", "email", "telefon", "podpora"]):
+        reply = f"Můžete nás kontaktovat přímo formulářem níže nebo e-mailem na {ADMIN_EMAIL}."
+
     else:
-        reply = "Vítám vás v Mystické Svatyni. Jakému tématu se dnes budeme věnovat?"
+        fallback_replies = [
+            "Vesmír má odpověď na vše. Zformulujte svůj dotaz trochu jinak, nebo odešlete rezervaci a my se vám ozveme.",
+            "Vnímají se různé energie. Můžete specifikovat, zda se ptáte na výklad Tarotu, Rituály nebo Platby?",
+            "Vítám vás v Mystické Svatyni. Vyberte si prosím službu v ceníku nebo zadejte dotaz k rezervaci."
+        ]
+        reply = random.choice(fallback_replies)
+
     return jsonify({"reply": reply})
 
 if __name__ == '__main__':
