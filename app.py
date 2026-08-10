@@ -4,6 +4,7 @@ import io
 import base64
 import random
 import smtplib
+import threading
 import os
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -71,19 +72,32 @@ TAROT_CARDS = [
     {"name": "XXI. Svět", "meaning": "Dokončení cyklu, integrace, dosažení cíle a harmonie."}
 ]
 
-def send_email_tls(recipient, subject, body):
-    msg = MIMEMultipart()
-    msg['From'] = ADMIN_EMAIL
-    msg['To'] = recipient
-    msg['Subject'] = subject
-    msg.attach(MIMEText(body, 'plain', 'utf-8'))
+def send_one_mail(to_email, subject, text_content):
+    """Funkce pro odeslání jednoho e-mailu na zadanou adresu"""
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = ADMIN_EMAIL
+        msg['To'] = to_email
+        msg['Subject'] = subject
+        msg.attach(MIMEText(text_content, 'plain', 'utf-8'))
 
-    # Použití TLS přes port 587 místo SSL 465
-    server = smtplib.SMTP('smtp.gmail.com', 587, timeout=15)
-    server.starttls()
-    server.login(ADMIN_EMAIL, SENDER_PASSWORD)
-    server.send_message(msg)
-    server.quit()
+        server = smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=15)
+        server.login(ADMIN_EMAIL, SENDER_PASSWORD)
+        server.sendmail(ADMIN_EMAIL, [to_email], msg.as_string())
+        server.quit()
+        print(f"OK: Email odeslan na {to_email}")
+    except Exception as e:
+        print(f"CHYBA odeslani na {to_email}: {e}")
+
+def handle_reservation_emails(reference_number, client_email, service_title, note):
+    # 1. Odeslání správci (vám)
+    admin_body = f"Nová rezervace!\n\nČíslo: {reference_number}\nE-mail klienta: {client_email}\nSlužba: {service_title}\nPoznámka: {note}"
+    send_one_mail(ADMIN_EMAIL, f"Nová rezervace: {reference_number}", admin_body)
+
+    # 2. Odeslání klientovi (pokud zadal e-mail)
+    if client_email and "@" in client_email:
+        client_body = f"Dobrý den,\n\nděkujeme za vaši rezervaci č. {reference_number}.\n\nVybraná služba: {service_title}\n\nDo 24 hodin vás budeme kontaktovat s podrobnostmi a přesným termínem.\n\nS úctou,\nMystická Svatyně"
+        send_one_mail(client_email, f"Potvrzení rezervace č. {reference_number} - Mystická Svatyně", client_body)
 
 @app.route('/')
 def home():
@@ -148,30 +162,16 @@ def reserve():
     service_title = SERVICES.get(service_key, {}).get('title', 'Neznámá služba')
     reference_number = f"RES-{random.randint(1000, 9999)}"
 
-    # Zpráva pro správce
-    admin_body = f"Nová rezervace!\n\nČíslo: {reference_number}\nE-mail klienta: {email}\nSlužba: {service_title}\nPoznámka: {note}"
-    
-    # Zpráva pro klienta
-    client_body = f"Dobrý den,\n\nděkujeme za vaši rezervaci č. {reference_number}.\nSlužba: {service_title}\n\nDo 24 hodin vás budeme kontaktovat.\n\nMystická Svatyně"
+    # Spuštění odesílání e-mailů na pozadí, aby klient nečekal na odezvu webu
+    threading.Thread(
+        target=handle_reservation_emails, 
+        args=(reference_number, email, service_title, note)
+    ).start()
 
-    try:
-        # Odeslání e-mailu vám (správci)
-        send_email_tls(ADMIN_EMAIL, f"Nová rezervace: {reference_number}", admin_body)
-        
-        # Odeslání e-mailu klientovi
-        if email and "@" in email:
-            send_email_tls(email, f"Potvrzení rezervace č. {reference_number}", client_body)
-
-        return jsonify({
-            "status": "success",
-            "message": f"Rezervace č. {reference_number} byla úspěšně odeslána! Potvrzení bylo odesláno na váš e-mail."
-        })
-    except Exception as e:
-        print(f"CHYBA ODESÍLÁNÍ: {e}")
-        return jsonify({
-            "status": "error",
-            "message": f"Rezervace byla vytvořena ({reference_number}), ale e-mail se nepodařilo odeslat. Chyba: {str(e)}"
-        }), 500
+    return jsonify({
+        "status": "success",
+        "message": f"Rezervace č. {reference_number} byla úspěšně odeslána! Potvrzení bylo odesláno na váš e-mail."
+    })
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
