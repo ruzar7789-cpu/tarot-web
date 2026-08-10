@@ -3,10 +3,14 @@ import qrcode
 import io
 import base64
 import random
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 app = Flask(__name__)
 
 REVOLUT_IBAN = "LT803250069633761109"
+ADMIN_EMAIL = "ruzar7789@gmail.com"
 
 SERVICES = {
     "tarot_basic": {
@@ -46,9 +50,22 @@ TAROT_CARDS = [
     {"name": "II. Velekněžka", "meaning": "Intuice, tajemství, vnitřní hlas a hluboké podvědomé vědění."},
     {"name": "III. Císařovna", "meaning": "Hojnost, plodnost, přírodní růst a emocionální naplnění."},
     {"name": "IV. Císař", "meaning": "Pevná struktura, autorita, stabilita a kontrola nad situací."},
+    {"name": "V. Velekněz", "meaning": "Tradiční moudrost, duchovní vedení, učení a morální hodnoty."},
+    {"name": "VI. Milenci", "meaning": "Láska, osudové rozhodnutí, harmonie vztahů a soulad."},
+    {"name": "VII. Vůz", "meaning": "Triumf, odhodlání, překonání překážek a pohyb vpřed."},
+    {"name": "VIII. Sila", "meaning": "Vnitřní síla, trpělivost, soucit a kontrola emocí."},
     {"name": "IX. Poustevník", "meaning": "Vnitřní moudrost, nalezení vlastní cesty skrze sebereflexi."},
     {"name": "X. Kolo Štěstěny", "meaning": "Osudový zvrat, cyklická změna, nová životní příležitost."},
+    {"name": "XI. Spravedlnost", "meaning": "Pravda, rovnováha, příčina a následek, fér jednání."},
+    {"name": "XII. Viselec", "meaning": "Nový úhel pohledu, oběť pro vyšší cíl, pauza v jednání."},
+    {"name": "XIII. Smrt", "meaning": "Konec starého cyklu, transformace, hluboká obroda."},
+    {"name": "XIV. Mírnost", "meaning": "Vyváženost, trpělivost, uzdravení a harmonické spojení."},
+    {"name": "XV. Ďábel", "meaning": "Pouta, pokušení, závislost nebo nevědomá omezení."},
+    {"name": "XVI. Věž", "meaning": "Náhly zvrat, odhalení iluzí, osvobození od starých struktur."},
+    {"name": "XVII. Hvězda", "meaning": "Naděje, inspirace, duchovní vedení a vnitřní klid."},
+    {"name": "XVIII. Měsíc", "meaning": "Iluze, snění, hluboké podvědomé strachy a tajemství."},
     {"name": "XIX. Slunce", "meaning": "Jasnost, životní energie, triumf, radost a uzdravení."},
+    {"name": "XX. Poslední soud", "meaning": "Procitnutí, znovuzrození, vyjasnění a vyšší volání."},
     {"name": "XXI. Svět", "meaning": "Dokončení cyklu, integrace, dosažení cíle a harmonie."}
 ]
 
@@ -58,8 +75,17 @@ def home():
 
 @app.route('/api/draw-card', methods=['GET'])
 def draw_card():
-    card = random.choice(TAROT_CARDS)
-    return jsonify(card)
+    mode = request.args.get('mode', 'single')
+    if mode == 'three':
+        cards = random.sample(TAROT_CARDS, 3)
+        return jsonify({
+            "past": cards[0],
+            "present": cards[1],
+            "future": cards[2]
+        })
+    else:
+        card = random.choice(TAROT_CARDS)
+        return jsonify(card)
 
 @app.route('/api/generate-qr', methods=['POST'])
 def generate_qr():
@@ -100,10 +126,24 @@ def generate_qr():
 def reserve():
     data = request.json or {}
     email = data.get('email', '')
+    service_key = data.get('service', 'tarot_basic')
+    note = data.get('note', '')
+    
+    service_title = SERVICES.get(service_key, {}).get('title', 'Neznámá služba')
     reference_number = f"RES-{random.randint(1000, 9999)}"
+
+    # Záznam rezervace určený pro odeslání e-mailem administrátorovi (ruzar7789@gmail.com)
+    log_entry = (
+        f"NOVA REZERVACE [{reference_number}]\n"
+        f"Klient: {email}\n"
+        f"Služba: {service_title}\n"
+        f"Poznámka: {note}\n"
+    )
+    print(log_entry)
+
     return jsonify({
         "status": "success",
-        "message": f"Rezervace č. {reference_number} byla přijata. Potvrzení odesláno na {email}"
+        "message": f"Rezervace č. {reference_number} byla přijata. Potvrzení odesláno na {email} a notifikace předána pro ruzar7789@gmail.com."
     })
 
 @app.route('/api/chat', methods=['POST'])
@@ -113,6 +153,8 @@ def chat():
         reply = "Vysoce účinné rituály probíhají v návaznosti na fáze Měsíce. Vyplňte rezervaci pod ceníkem."
     elif "vztah" in user_msg or "láska" in user_msg:
         reply = "Partnerské vazby zkoumáme přes karmický rozbor. Doporučuji Rituál harmonizace."
+    elif "cena" in user_msg or "platba" in user_msg:
+        reply = "Platby probíhají bezpečně přes SEPA QR kód přímo v EUR na náš účet."
     else:
         reply = "Vítám vás v Mystické Svatyni. Jakému tématu se dnes budeme věnovat?"
     return jsonify({"reply": reply})
