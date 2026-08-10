@@ -11,6 +11,7 @@ app = Flask(__name__)
 
 REVOLUT_IBAN = "LT803250069633761109"
 ADMIN_EMAIL = "ruzar7789@gmail.com"
+SENDER_PASSWORD = "ipomueicxxgxbumn"
 
 SERVICES = {
     "tarot_basic": {
@@ -53,7 +54,7 @@ TAROT_CARDS = [
     {"name": "V. Velekněz", "meaning": "Tradiční moudrost, duchovní vedení, učení a morální hodnoty."},
     {"name": "VI. Milenci", "meaning": "Láska, osudové rozhodnutí, harmonie vztahů a soulad."},
     {"name": "VII. Vůz", "meaning": "Triumf, odhodlání, překonání překážek a pohyb vpřed."},
-    {"name": "VIII. Sila", "meaning": "Vnitřní síla, trpělivost, soucit a kontrola emocí."},
+    {"name": "VIII. Síla", "meaning": "Vnitřní síla, trpělivost, soucit a kontrola emocí."},
     {"name": "IX. Poustevník", "meaning": "Vnitřní moudrost, nalezení vlastní cesty skrze sebereflexi."},
     {"name": "X. Kolo Štěstěny", "meaning": "Osudový zvrat, cyklická změna, nová životní příležitost."},
     {"name": "XI. Spravedlnost", "meaning": "Pravda, rovnováha, příčina a následek, fér jednání."},
@@ -61,7 +62,7 @@ TAROT_CARDS = [
     {"name": "XIII. Smrt", "meaning": "Konec starého cyklu, transformace, hluboká obroda."},
     {"name": "XIV. Mírnost", "meaning": "Vyváženost, trpělivost, uzdravení a harmonické spojení."},
     {"name": "XV. Ďábel", "meaning": "Pouta, pokušení, závislost nebo nevědomá omezení."},
-    {"name": "XVI. Věž", "meaning": "Náhly zvrat, odhalení iluzí, osvobození od starých struktur."},
+    {"name": "XVI. Věž", "meaning": "Náhlý zvrat, odhalení iluzí, osvobození od starých struktur."},
     {"name": "XVII. Hvězda", "meaning": "Naděje, inspirace, duchovní vedení a vnitřní klid."},
     {"name": "XVIII. Měsíc", "meaning": "Iluze, snění, hluboké podvědomé strachy a tajemství."},
     {"name": "XIX. Slunce", "meaning": "Jasnost, životní energie, triumf, radost a uzdravení."},
@@ -132,18 +133,37 @@ def reserve():
     service_title = SERVICES.get(service_key, {}).get('title', 'Neznámá služba')
     reference_number = f"RES-{random.randint(1000, 9999)}"
 
-    # Záznam rezervace určený pro odeslání e-mailem administrátorovi (ruzar7789@gmail.com)
-    log_entry = (
-        f"NOVA REZERVACE [{reference_number}]\n"
-        f"Klient: {email}\n"
-        f"Služba: {service_title}\n"
-        f"Poznámka: {note}\n"
-    )
-    print(log_entry)
+    subject = f"Nová rezervace: {reference_number} - Mystická Svatyně"
+    body = f"""
+Nová rezervace ze stránek Mystická Svatyně!
+
+Číslo rezervace: {reference_number}
+E-mail klienta: {email}
+Vybraná služba: {service_title}
+Poznámka / Dotaz: {note}
+    """
+
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = ADMIN_EMAIL
+        msg['To'] = ADMIN_EMAIL
+        msg['Subject'] = subject
+        msg.attach(MIMEText(body, 'plain'))
+
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(ADMIN_EMAIL, SENDER_PASSWORD)
+        server.send_message(msg)
+        server.quit()
+
+        status_msg = f"Rezervace č. {reference_number} byla úspěšně odeslána! Potvrzení brzy dorazí na váš e-mail."
+    except Exception as e:
+        print(f"Chyba při odesílání emailu: {e}")
+        status_msg = f"Rezervace č. {reference_number} byla uložena, ale e-mail se nepodařilo doručit."
 
     return jsonify({
         "status": "success",
-        "message": f"Rezervace č. {reference_number} byla přijata. Potvrzení odesláno na {email} a notifikace předána pro ruzar7789@gmail.com."
+        "message": status_msg
     })
 
 @app.route('/api/chat', methods=['POST'])
