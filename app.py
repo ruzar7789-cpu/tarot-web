@@ -4,6 +4,7 @@ import io
 import base64
 import random
 import smtplib
+import threading
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -69,6 +70,23 @@ TAROT_CARDS = [
     {"name": "XX. Poslední soud", "meaning": "Procitnutí, znovuzrození, vyjasnění a vyšší volání."},
     {"name": "XXI. Svět", "meaning": "Dokončení cyklu, integrace, dosažení cíle a harmonie."}
 ]
+
+def send_async_email(subject, body):
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = ADMIN_EMAIL
+        msg['To'] = ADMIN_EMAIL
+        msg['Subject'] = subject
+        msg.attach(MIMEText(body, 'plain'))
+
+        server = smtplib.SMTP('smtp.gmail.com', 587, timeout=10)
+        server.starttls()
+        server.login(ADMIN_EMAIL, SENDER_PASSWORD)
+        server.send_message(msg)
+        server.quit()
+        print("E-mail úspěšně odeslán.")
+    except Exception as e:
+        print(f"Chyba při odesílání emailu na pozadí: {e}")
 
 @app.route('/')
 def home():
@@ -143,27 +161,12 @@ Vybraná služba: {service_title}
 Poznámka / Dotaz: {note}
     """
 
-    try:
-        msg = MIMEMultipart()
-        msg['From'] = ADMIN_EMAIL
-        msg['To'] = ADMIN_EMAIL
-        msg['Subject'] = subject
-        msg.attach(MIMEText(body, 'plain'))
-
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls()
-        server.login(ADMIN_EMAIL, SENDER_PASSWORD)
-        server.send_message(msg)
-        server.quit()
-
-        status_msg = f"Rezervace č. {reference_number} byla úspěšně odeslána! Potvrzení brzy dorazí na váš e-mail."
-    except Exception as e:
-        print(f"Chyba při odesílání emailu: {e}")
-        status_msg = f"Rezervace č. {reference_number} byla uložena, ale e-mail se nepodařilo doručit."
+    # Odeslání e-mailu na pozadí (neblokuje web)
+    threading.Thread(target=send_async_email, args=(subject, body)).start()
 
     return jsonify({
         "status": "success",
-        "message": status_msg
+        "message": f"Rezervace č. {reference_number} byla úspěšně odeslána! Potvrzení bude zpracováno."
     })
 
 @app.route('/api/chat', methods=['POST'])
@@ -181,3 +184,4 @@ def chat():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
+    
