@@ -4,7 +4,6 @@ import io
 import base64
 import random
 import smtplib
-import threading
 import os
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -72,32 +71,37 @@ TAROT_CARDS = [
     {"name": "XXI. Svět", "meaning": "Dokončení cyklu, integrace, dosažení cíle a harmonie."}
 ]
 
-def send_one_mail(to_email, subject, text_content):
-    """Funkce pro odeslání jednoho e-mailu na zadanou adresu"""
-    try:
-        msg = MIMEMultipart()
-        msg['From'] = ADMIN_EMAIL
-        msg['To'] = to_email
-        msg['Subject'] = subject
-        msg.attach(MIMEText(text_content, 'plain', 'utf-8'))
+def send_combined_reservation_email(reference_number, client_email, service_title, note):
+    recipients = [ADMIN_EMAIL]
+    if client_email and "@" in client_email and client_email != ADMIN_EMAIL:
+        recipients.append(client_email)
 
-        server = smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=15)
+    msg = MIMEMultipart()
+    msg['From'] = ADMIN_EMAIL
+    msg['To'] = client_email if client_email else ADMIN_EMAIL
+    msg['Subject'] = f"Potvrzení rezervace č. {reference_number} - Mystická Svatyně"
+
+    body = f"""Dobrý den,
+
+děkujeme za vaši rezervaci v Mystické Svatyni!
+
+Detaily rezervace:
+- Číslo rezervace: {reference_number}
+- Vybraná služba: {service_title}
+- Vaše poznámka: {note if note else "Bez poznámky"}
+- Kontaktní e-mail: {client_email}
+
+Vaše rezervace byla v pořádku přijata. Do 24 hodin vás budeme kontaktovat s podrobnostmi a přesným termínem.
+
+S úctou,
+Mystická Svatyně
+"""
+    msg.attach(MIMEText(body, 'plain', 'utf-8'))
+
+    # Odeslání všem příjemcům najednou v jednom SMTP spojení
+    with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=15) as server:
         server.login(ADMIN_EMAIL, SENDER_PASSWORD)
-        server.sendmail(ADMIN_EMAIL, [to_email], msg.as_string())
-        server.quit()
-        print(f"OK: Email odeslan na {to_email}")
-    except Exception as e:
-        print(f"CHYBA odeslani na {to_email}: {e}")
-
-def handle_reservation_emails(reference_number, client_email, service_title, note):
-    # 1. Odeslání správci (vám)
-    admin_body = f"Nová rezervace!\n\nČíslo: {reference_number}\nE-mail klienta: {client_email}\nSlužba: {service_title}\nPoznámka: {note}"
-    send_one_mail(ADMIN_EMAIL, f"Nová rezervace: {reference_number}", admin_body)
-
-    # 2. Odeslání klientovi (pokud zadal e-mail)
-    if client_email and "@" in client_email:
-        client_body = f"Dobrý den,\n\nděkujeme za vaši rezervaci č. {reference_number}.\n\nVybraná služba: {service_title}\n\nDo 24 hodin vás budeme kontaktovat s podrobnostmi a přesným termínem.\n\nS úctou,\nMystická Svatyně"
-        send_one_mail(client_email, f"Potvrzení rezervace č. {reference_number} - Mystická Svatyně", client_body)
+        server.sendmail(ADMIN_EMAIL, recipients, msg.as_string())
 
 @app.route('/')
 def home():
@@ -162,16 +166,18 @@ def reserve():
     service_title = SERVICES.get(service_key, {}).get('title', 'Neznámá služba')
     reference_number = f"RES-{random.randint(1000, 9999)}"
 
-    # Spuštění odesílání e-mailů na pozadí, aby klient nečekal na odezvu webu
-    threading.Thread(
-        target=handle_reservation_emails, 
-        args=(reference_number, email, service_title, note)
-    ).start()
-
-    return jsonify({
-        "status": "success",
-        "message": f"Rezervace č. {reference_number} byla úspěšně odeslána! Potvrzení bylo odesláno na váš e-mail."
-    })
+    try:
+        send_combined_reservation_email(reference_number, email, service_title, note)
+        return jsonify({
+            "status": "success",
+            "message": f"Rezervace č. {reference_number} byla úspěšně odeslána! Potvrzení bylo odesláno na váš e-mail."
+        })
+    except Exception as e:
+        print(f"CHYBA: {e}")
+        return jsonify({
+            "status": "error",
+            "message": f"Chyba při odesílání e-mailu: {str(e)}"
+        }), 500
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
@@ -219,3 +225,4 @@ def chat():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
+    
