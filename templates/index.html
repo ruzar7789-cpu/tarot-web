@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mystická Svatyně</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Montserrat:wght@300;400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #07030d;
+            --card-bg: #12091f;
+            --accent-gold: #d4af37;
+            --text-light: #e0d6eb;
+            --border-gold: rgba(212, 175, 55, 0.3);
+        }
+        body { background: var(--bg-color); color: var(--text-light); font-family: 'Montserrat', sans-serif; margin: 0; padding: 0; }
+        header { background: linear-gradient(180deg, #1b0a2e 0%, var(--bg-color) 100%); padding: 30px; text-align: center; border-bottom: 1px solid var(--border-gold); }
+        h1, h2, h3 { font-family: 'Cinzel', serif; color: var(--accent-gold); }
+        .container { max-width: 900px; margin: auto; padding: 20px; }
+        .card { background: var(--card-bg); border: 1px solid var(--border-gold); border-radius: 8px; padding: 20px; margin-bottom: 20px; text-align: center; }
+        button { background: #6a0dad; color: var(--accent-gold); border: 1px solid var(--accent-gold); padding: 10px 20px; border-radius: 4px; cursor: pointer; font-family: 'Cinzel', serif; }
+        button:hover { background: var(--accent-gold); color: #000; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>✨ MYSTICKÁ SVATYNĚ ✨</h1>
+        <p>Portál Ezoteriky a Rituálů</p>
+    </header>
+    <div class="container">
+        <div class="card">
+            <h2>🔮 Denní Karta</h2>
+            <button onclick="drawCard()">Vytáhnout kartu</button>
+            <div id="card-result" style="margin-top: 15px;"></div>
+        </div>
+    </div>
+    <script>
+        async function drawCard() {
+            const res = await fetch('/api/draw-card');
+            const data = await res.json();
+            document.getElementById('card-result').innerHTML = `<strong>${data.name}</strong>: <em>${data.meaning}</em>`;
+        }
+    </script>
+</body>
+</html>
