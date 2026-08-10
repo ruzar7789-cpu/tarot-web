@@ -13,7 +13,8 @@ app = Flask(__name__)
 
 REVOLUT_IBAN = "LT803250069633761109"
 ADMIN_EMAIL = "ruzar7789@gmail.com"
-SENDER_PASSWORD = os.getenv("SENDER_PASSWORD", "ipomueicxxgxbumn")
+# Načte heslo z proměnné prostředí na Renderu, případně použije toto nové vygenerované
+SENDER_PASSWORD = os.getenv("SENDER_PASSWORD", "deegwpoekzyqotkk")
 
 SERVICES = {
     "tarot_basic": {
@@ -72,37 +73,36 @@ TAROT_CARDS = [
     {"name": "XXI. Svět", "meaning": "Dokončení cyklu, integrace, dosažení cíle a harmonie."}
 ]
 
-def send_async_emails(reference_number, client_email, service_title, note):
+def send_single_email(recipient, subject, body):
     try:
+        msg = MIMEMultipart()
+        msg['From'] = ADMIN_EMAIL
+        msg['To'] = recipient
+        msg['Subject'] = subject
+        msg.attach(MIMEText(body, 'plain', 'utf-8'))
+
         with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=15) as server:
             server.login(ADMIN_EMAIL, SENDER_PASSWORD)
+            server.send_message(msg)
+        print(f"✅ E-mail úspěšně odeslán na: {recipient}")
+    except Exception as e:
+        print(f"❌ CHYBA ODESÍLÁNÍ NA {recipient}: {e}")
 
-            # 1. E-mail pro správce (Admin)
-            admin_msg = MIMEMultipart()
-            admin_msg['From'] = ADMIN_EMAIL
-            admin_msg['To'] = ADMIN_EMAIL
-            admin_msg['Subject'] = f"Nová rezervace: {reference_number} - Mystická Svatyně"
-            
-            admin_body = f"""
+def send_async_emails(reference_number, client_email, service_title, note):
+    # E-mail správci
+    admin_body = f"""
 Nová rezervace ze stránek Mystická Svatyně!
 
 Číslo rezervace: {reference_number}
 E-mail klienta: {client_email}
 Vybraná služba: {service_title}
 Poznámka / Dotaz: {note}
-            """
-            admin_msg.attach(MIMEText(admin_body, 'plain', 'utf-8'))
-            server.send_message(admin_msg)
-            print("✅ E-mail pro administrátora odeslán.")
+    """
+    send_single_email(ADMIN_EMAIL, f"Nová rezervace: {reference_number} - Mystická Svatyně", admin_body)
 
-            # 2. Potvrzovací e-mail pro klienta (pokud zadal platný e-mail)
-            if client_email and "@" in client_email:
-                client_msg = MIMEMultipart()
-                client_msg['From'] = ADMIN_EMAIL
-                client_msg['To'] = client_email
-                client_msg['Subject'] = f"Potvrzení rezervace č. {reference_number} - Mystická Svatyně"
-
-                client_body = f"""
+    # Potvrzovací e-mail klientovi
+    if client_email and "@" in client_email:
+        client_body = f"""
 Dobrý den,
 
 děkujeme za vaši rezervaci v Mystické Svatyni.
@@ -116,13 +116,8 @@ Vaše rezervace byla v pořádku přijata. Do 24 hodin vás budeme kontaktovat s
 
 S úctou,
 Mystická Svatyně
-                """
-                client_msg.attach(MIMEText(client_body, 'plain', 'utf-8'))
-                server.send_message(client_msg)
-                print(f"✅ Potvrzovací e-mail odeslán klientovi na: {client_email}")
-
-    except Exception as e:
-        print(f"❌ Chyba při odesílání e-mailů: {e}")
+        """
+        send_single_email(client_email, f"Potvrzení rezervace č. {reference_number} - Mystická Svatyně", client_body)
 
 @app.route('/')
 def home():
@@ -187,7 +182,6 @@ def reserve():
     service_title = SERVICES.get(service_key, {}).get('title', 'Neznámá služba')
     reference_number = f"RES-{random.randint(1000, 9999)}"
 
-    # Spuštění odesílání obou e-mailů na pozadí
     threading.Thread(
         target=send_async_emails, 
         args=(reference_number, email, service_title, note)
@@ -244,3 +238,4 @@ def chat():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
+    
